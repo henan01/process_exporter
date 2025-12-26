@@ -50,10 +50,12 @@ jobs:
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
-          GOARM: ${{ matrix.goarm }}
           CGO_ENABLED: 0
         run: |
-          LDFLAGS="-s -w -X main.version=${{ steps.get_version.outputs.version }}"
+          if [ -n "${{ matrix.goarm }}" ]; then
+            export GOARM="${{ matrix.goarm }}"
+          fi
+          LDFLAGS="-s -w"
           OUTPUT="process_exporter_${{ matrix.suffix }}"
           go build -ldflags="$LDFLAGS" -o "$OUTPUT" main.go
           chmod +x "$OUTPUT"

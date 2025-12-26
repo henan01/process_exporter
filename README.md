@@ -41,6 +41,16 @@ sha256sum -c process_exporter_linux_amd64.sha256
 - `process_exporter_linux_arm64` - Linux ARM64 (aarch64)
 - `process_exporter_linux_arm32` - Linux ARM32 (ARMv7)
 
+**使用安装脚本（推荐）：**
+
+```bash
+# 下载并运行安装脚本
+curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/process_exporter/main/install.sh | bash
+
+# 或指定版本安装
+curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/process_exporter/main/install.sh | bash -s v1.0.0
+```
+
 > **提示**：请将 `YOUR_USERNAME` 替换为您的 GitHub 用户名，`v1.0.0` 替换为实际版本号。
 
 ### 编译
