@@ -1,0 +1,174 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # 当推送以 v 开头的标签时触发（例如 v1.0.0）
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}/${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            suffix: linux_amd64
+          - os: linux
+            arch: arm64
+            suffix: linux_arm64
+          - os: linux
+            arch: arm
+            suffix: linux_arm32
+            goarm: "7"
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.20'
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          if [ "${{ github.ref_type }}" == "tag" ]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "tag=${VERSION}" >> $GITHUB_OUTPUT
+          else
+            VERSION="dev-$(git rev-parse --short HEAD)"
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "tag=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          GOARM: ${{ matrix.goarm }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-s -w -X main.version=${{ steps.get_version.outputs.version }}"
+          OUTPUT="process_exporter_${{ matrix.suffix }}"
+          go build -ldflags="$LDFLAGS" -o "$OUTPUT" main.go
+          chmod +x "$OUTPUT"
+
+      - name: Create checksum
+        run: |
+          OUTPUT="process_exporter_${{ matrix.suffix }}"
+          sha256sum "$OUTPUT" > "$OUTPUT.sha256"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: process_exporter_${{ matrix.suffix }}
+          path: |
+            process_exporter_${{ matrix.suffix }}
+            process_exporter_${{ matrix.suffix }}.sha256
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          # 复制所有二进制文件和校验和文件
+          find artifacts -type f -name "process_exporter_*" ! -name "*.sha256" -exec cp {} release/ \;
+          find artifacts -type f -name "*.sha256" -exec cp {} release/ \;
+          
+          # 创建发布说明文件
+          cat > release/README.txt <<EOF
+          Process Exporter Release ${{ steps.get_version.outputs.version }}
+          
+          文件说明：
+          - process_exporter_linux_amd64    : Linux AMD64 (x86_64) 架构
+          - process_exporter_linux_arm64    : Linux ARM64 (aarch64) 架构
+          - process_exporter_linux_arm32     : Linux ARM32 (ARMv7) 架构
+          - *.sha256                         : SHA256 校验和文件
+          
+          使用方法：
+          1. 下载对应架构的二进制文件
+          2. 添加执行权限: chmod +x process_exporter_linux_*
+          3. 运行: ./process_exporter_linux_* --remote.url=http://victoriametrics:8428/api/v1/write
+          
+          验证文件完整性：
+          sha256sum -c process_exporter_linux_*.sha256
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ steps.get_version.outputs.version }}
+          body: |
+            ## Process Exporter ${{ steps.get_version.outputs.version }}
+            
+            ### 📦 下载
+            
+            请根据您的系统架构下载对应的二进制文件：
+            
+            - **Linux AMD64 (x86_64)**: `process_exporter_linux_amd64`
+            - **Linux ARM64 (aarch64)**: `process_exporter_linux_arm64`
+            - **Linux ARM32 (ARMv7)**: `process_exporter_linux_arm32`
+            
+            ### 🔐 验证文件完整性
+            
+            下载后可以使用 SHA256 校验和验证文件：
+            
+            ```bash
+            sha256sum -c process_exporter_linux_amd64.sha256
+            ```
+            
+            ### 🚀 快速开始
+            
+            ```bash
+            # 1. 下载并添加执行权限
+            chmod +x process_exporter_linux_amd64
+            
+            # 2. 运行（替换为您的 VictoriaMetrics 或 Prometheus 地址）
+            ./process_exporter_linux_amd64 \
+              --remote.url=http://victoriametrics:8428/api/v1/write \
+              --interval=60s \
+              --top=10
+            ```
+            
+            ### 📚 更多信息
+            
+            详细使用说明请查看 [README.md](README.md)
+            
+            ### 📝 变更日志
+            
+            查看 [GitHub Releases](https://github.com/${{ github.repository }}/releases) 了解详细变更。
+          files: |
+            release/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

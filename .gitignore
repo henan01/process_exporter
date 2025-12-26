@@ -1,0 +1,36 @@
+# 编译产物
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# 测试二进制文件
+*.test
+
+# 输出文件
+*.out
+
+# Go 工作区文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 日志文件
+*.log
+
+# 临时文件
+tmp/
+temp/
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 发布文件（本地测试用）
+release/
+artifacts/
+

@@ -17,6 +17,32 @@
 
 ## 快速开始
 
+### 下载预编译版本（推荐）
+
+从 [GitHub Releases](https://github.com/YOUR_USERNAME/process_exporter/releases) 下载预编译的二进制文件：
+
+```bash
+# 1. 下载对应架构的二进制文件（以 AMD64 为例）
+wget https://github.com/YOUR_USERNAME/process_exporter/releases/download/v1.0.0/process_exporter_linux_amd64
+
+# 2. 添加执行权限
+chmod +x process_exporter_linux_amd64
+
+# 3. 验证文件完整性（可选）
+wget https://github.com/YOUR_USERNAME/process_exporter/releases/download/v1.0.0/process_exporter_linux_amd64.sha256
+sha256sum -c process_exporter_linux_amd64.sha256
+
+# 4. 运行
+./process_exporter_linux_amd64 --remote.url=http://victoriametrics:8428/api/v1/write
+```
+
+**支持的架构：**
+- `process_exporter_linux_amd64` - Linux AMD64 (x86_64)
+- `process_exporter_linux_arm64` - Linux ARM64 (aarch64)
+- `process_exporter_linux_arm32` - Linux ARM32 (ARMv7)
+
+> **提示**：请将 `YOUR_USERNAME` 替换为您的 GitHub 用户名，`v1.0.0` 替换为实际版本号。
+
 ### 编译
 
 支持编译 **Linux AMD64**、**ARM64** 和 **ARM32** 三种架构：
