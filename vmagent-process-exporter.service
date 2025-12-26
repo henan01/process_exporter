@@ -1,0 +1,31 @@
+[Unit]
+Description=VmAgent Process Exporter
+Documentation=https://github.com/your-org/monitor
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/data/monitor/exporters/process_exporter
+ExecStart=/data/monitor/exporters/process_exporter/process_exporter \
+  --remote.url=http://victoriametrics:8428/api/v1/write \
+  --interval=60s \
+  --top=10 \
+  --label env=production \
+  --label region=cn-north
+
+# 自动重启配置
+Restart=on-failure
+RestartSec=10s
+
+# 日志配置
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=process-exporter
+
+# 安全配置
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
