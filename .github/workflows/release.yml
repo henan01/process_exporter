@@ -79,6 +79,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag'
+    permissions:
+      contents: write  # 需要写入权限来创建 Release
     
     steps:
       - name: Checkout code
@@ -97,13 +99,56 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: process_exporter_*
+          merge-multiple: false
 
       - name: Prepare release assets
         run: |
           mkdir -p release
+          
+          # 调试：列出 artifacts 目录结构
+          echo "=== Artifacts 目录结构 ==="
+          find artifacts -type f -o -type d | head -20
+          echo ""
+          echo "=== 查找 process_exporter 文件 ==="
+          find artifacts -name "process_exporter_*" -type f
+          
           # 复制所有二进制文件和校验和文件
-          find artifacts -type f -name "process_exporter_*" ! -name "*.sha256" -exec cp {} release/ \;
-          find artifacts -type f -name "*.sha256" -exec cp {} release/ \;
+          echo ""
+          echo "=== 复制文件到 release 目录 ==="
+          # 查找并复制二进制文件（排除 .sha256 文件）
+          for file in $(find artifacts -type f -name "process_exporter_*" ! -name "*.sha256"); do
+            echo "复制: $file"
+            cp -v "$file" release/
+          done
+          
+          # 查找并复制校验和文件
+          for file in $(find artifacts -type f -name "*.sha256"); do
+            echo "复制校验和: $file"
+            cp -v "$file" release/
+          done
+          
+          # 验证文件是否存在
+          echo ""
+          echo "=== Release 目录内容 ==="
+          ls -lh release/ || echo "Release 目录为空！"
+          
+          # 检查文件数量
+          FILE_COUNT=$(find release -type f 2>/dev/null | wc -l)
+          echo ""
+          echo "找到 $FILE_COUNT 个文件"
+          
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "错误: 没有找到要发布的文件！"
+            echo "Artifacts 目录内容:"
+            find artifacts -type f || true
+            exit 1
+          fi
+          
+          # 列出所有要发布的文件
+          echo ""
+          echo "=== 要发布的文件列表 ==="
+          find release -type f -exec echo {} \;
           
           # 创建发布说明文件
           cat > release/README.txt <<EOF
@@ -124,9 +169,17 @@ jobs:
           sha256sum -c process_exporter_linux_*.sha256
           EOF
 
+      - name: List release files
+        run: |
+          echo "=== 准备上传的文件列表 ==="
+          find release -type f -exec ls -lh {} \;
+          echo "=== 文件路径 ==="
+          find release -type f
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.get_version.outputs.tag }}
           name: Release ${{ steps.get_version.outputs.version }}
           body: |
             ## Process Exporter ${{ steps.get_version.outputs.version }}
@@ -171,6 +224,7 @@ jobs:
             release/*
           draft: false
           prerelease: false
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
