@@ -1,6 +1,6 @@
-# # Process Exporter
+# Process Exporter
 
-用于监控服务器内存和 CPU 占用最高的进程，并直接推送指标到远程 VictoriaMetrics 的导出器。
+用于监控服务器内存和 CPU 占用最高的进程，并直接推送指标到远程 **VictoriaMetrics** 或 **Prometheus** 的导出器。
 
 ## 特性
 
@@ -8,7 +8,8 @@
 - ✅ **系统内存监控** - 总内存、已用内存、可用内存和使用率
 - ✅ **自动采集本机标识**（主机名、IP 地址、MAC 地址）作为指标标签
 - ✅ **自定义标签** - 支持添加任意自定义标签，方便查询和分组
-- ✅ **直接推送**指标到远程 VictoriaMetrics 端点
+- ✅ **直接推送**指标到远程 VictoriaMetrics 或 Prometheus 端点
+- ✅ **兼容性** - 同时支持 VictoriaMetrics 和 Prometheus（使用 Prometheus 远程写入 API）
 - ✅ 支持可配置的采集间隔
 - ✅ 支持基本认证（用户名/密码）
 - ✅ 单一可执行文件，无需额外依赖
@@ -65,7 +66,7 @@ GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o process_exporter_arm3
 
 | 参数                | 说明                                     | 默认值 | 必需  |
 | ------------------- | ---------------------------------------- | ------ | ----- |
-| `--remote.url`      | 远程 VictoriaMetrics 写入端点 URL        | 无     | ✅ 是 |
+| `--remote.url`      | 远程写入端点 URL（支持 VictoriaMetrics 和 Prometheus） | 无     | ✅ 是 |
 | `--remote.username` | 基本认证用户名                           | 空     | ❌ 否 |
 | `--remote.password` | 基本认证密码                             | 空     | ❌ 否 |
 | `--interval`        | 采集和推送间隔                           | 60s    | ❌ 否 |
@@ -74,7 +75,9 @@ GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o process_exporter_arm3
 
 ### 示例
 
-#### 1. 推送到本地 VictoriaMetrics
+#### 1. 推送到本地 VictoriaMetrics 或 Prometheus
+
+**推送到 VictoriaMetrics：**
 
 ```bash
 # 最简单的用法，推送到本地 VictoriaMetrics
@@ -84,7 +87,27 @@ GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o process_exporter_arm3
 ./process_exporter --remote.url=http://localhost:8428/api/v1/write 2>&1 | tee exporter.log
 ```
 
-#### 2. 推送到远程 VictoriaMetrics（带认证）
+**推送到 Prometheus（使用 Prometheus Remote Write API）：**
+
+```bash
+# 推送到本地 Prometheus（需要配置 remote_write）
+./process_exporter --remote.url=http://localhost:9090/api/v1/write
+
+# 推送到远程 Prometheus
+./process_exporter --remote.url=http://prometheus:9090/api/v1/write
+
+# 推送到 Prometheus 并添加标签
+./process_exporter \
+  --remote.url=http://prometheus:9090/api/v1/write \
+  --label env=production \
+  --label region=us-east-1
+```
+
+> **注意**：Prometheus 需要配置 `remote_write` 接收器（如使用 Prometheus Agent 模式或配置远程写入端点）。VictoriaMetrics 原生支持 `/api/v1/write` 端点。
+
+#### 2. 推送到远程 VictoriaMetrics 或 Prometheus（带认证）
+
+**VictoriaMetrics 示例：**
 
 ```bash
 # HTTPS + 基本认证
@@ -97,6 +120,25 @@ GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o process_exporter_arm3
 # HTTP + 基本认证（内网环境）
 ./process_exporter \
   --remote.url=http://192.168.1.100:8428/api/v1/write \
+  --remote.username=admin \
+  --remote.password=secret123 \
+  --interval=60s \
+  --top=10
+```
+
+**Prometheus 示例：**
+
+```bash
+# 推送到 Prometheus（带基本认证）
+./process_exporter \
+  --remote.url=https://prometheus.example.com/api/v1/write \
+  --remote.username=monitor \
+  --remote.password=P@ssw0rd \
+  --interval=30s
+
+# 推送到 Prometheus（内网环境）
+./process_exporter \
+  --remote.url=http://192.168.1.100:9090/api/v1/write \
   --remote.username=admin \
   --remote.password=secret123 \
   --interval=60s \
@@ -121,7 +163,7 @@ GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o process_exporter_arm3
 
 #### 4. 添加自定义标签（推荐）
 
-自定义标签可以帮助您在 VictoriaMetrics 中更好地组织和查询数据：
+自定义标签可以帮助您在 VictoriaMetrics 或 Prometheus 中更好地组织和查询数据：
 
 **生产环境示例：**
 
@@ -807,7 +849,9 @@ chmod +x deploy.sh
 
 ## 查询示例
 
-在 VictoriaMetrics 或 Grafana 中查询指标：
+在 **VictoriaMetrics**、**Prometheus** 或 **Grafana** 中查询指标：
+
+> **提示**：所有查询示例使用 PromQL 语法，同时适用于 VictoriaMetrics 和 Prometheus。
 
 ### 基础查询
 
@@ -1204,10 +1248,17 @@ groups:
 
 1. **必须在 Linux 系统上运行**，因为依赖 `/proc` 文件系统
 2. **必须指定 `--remote.url` 参数**，否则程序无法启动
-3. 远程端点 URL 格式：`http(s)://host:port/api/v1/write`
-4. 如果 VictoriaMetrics 启用了认证，必须提供 `--remote.username` 和 `--remote.password`
-5. 采集间隔不建议设置过短（建议 ≥ 10s），避免对系统造成负担
-6. 主机标识（hostname、IP、MAC）在程序启动时自动采集，运行期间不会改变
+3. **远程端点 URL 格式**：`http(s)://host:port/api/v1/write`
+   - **VictoriaMetrics**：默认端口 8428，原生支持 `/api/v1/write` 端点
+   - **Prometheus**：默认端口 9090，需要配置 remote_write 接收器或使用 Prometheus Agent 模式
+4. **认证支持**：
+   - 如果 VictoriaMetrics 或 Prometheus 启用了基本认证，必须提供 `--remote.username` 和 `--remote.password`
+   - 支持 HTTP Basic Authentication
+5. **采集间隔**：不建议设置过短（建议 ≥ 10s），避免对系统造成负担
+6. **主机标识**：主机标识（hostname、IP、MAC）在程序启动时自动采集，运行期间不会改变
+7. **兼容性**：
+   - 使用 Prometheus 远程写入 API 格式，兼容 VictoriaMetrics 和 Prometheus
+   - 指标格式符合 Prometheus 规范，可在任何支持 PromQL 的系统中查询
 
 ## 故障排查
 
@@ -1220,6 +1271,8 @@ groups:
 ```bash
 # 检查 URL 格式是否正确
 # 正确格式：http(s)://host:port/api/v1/write
+# VictoriaMetrics 示例：http://victoriametrics:8428/api/v1/write
+# Prometheus 示例：http://prometheus:9090/api/v1/write
 # 错误示例：http://victoriametrics:8428  （缺少 /api/v1/write）
 # 错误示例：http://victoriametrics:8428/metrics  （错误的路径）
 ```
@@ -1268,7 +1321,9 @@ sudo firewall-cmd --list-all
 sudo systemctl stop firewalld
 ```
 
-5. **检查 VictoriaMetrics 服务状态**
+5. **检查服务状态**
+
+**检查 VictoriaMetrics：**
 
 ```bash
 # 检查 VictoriaMetrics 是否运行
@@ -1279,6 +1334,22 @@ curl http://victoriametrics:8428/version
 
 # 检查 VictoriaMetrics 指标
 curl http://victoriametrics:8428/metrics
+```
+
+**检查 Prometheus：**
+
+```bash
+# 检查 Prometheus 是否运行
+curl http://prometheus:9090/-/healthy
+
+# 检查 Prometheus 版本
+curl http://prometheus:9090/api/v1/status/buildinfo
+
+# 检查 Prometheus 配置
+curl http://prometheus:9090/api/v1/status/config
+
+# 检查 Prometheus 指标
+curl http://prometheus:9090/metrics
 ```
 
 #### 常见错误和解决方案
@@ -1308,7 +1379,9 @@ curl -u username:password http://victoriametrics:8428/api/v1/write
 curl -v -u username:password http://victoriametrics:8428/api/v1/write
 ```
 
-2. **检查 VictoriaMetrics 认证配置**
+2. **检查认证配置**
+
+**检查 VictoriaMetrics 认证：**
 
 ```bash
 # 检查 VictoriaMetrics 配置文件
@@ -1316,6 +1389,17 @@ cat /etc/victoriametrics/vmagent.yml | grep -i auth
 
 # 检查 VictoriaMetrics 是否启用了认证
 curl http://victoriametrics:8428/api/v1/write
+# 如果返回 401 Unauthorized，说明启用了认证
+```
+
+**检查 Prometheus 认证：**
+
+```bash
+# 检查 Prometheus 配置文件
+cat /etc/prometheus/prometheus.yml | grep -i auth
+
+# 检查 Prometheus 是否启用了认证
+curl http://prometheus:9090/api/v1/write
 # 如果返回 401 Unauthorized，说明启用了认证
 ```
 
@@ -1374,7 +1458,9 @@ tail -f /var/log/supervisor/process-exporter-error.log
 ./process_exporter --remote.url=... 2>&1 | tee exporter.log
 ```
 
-3. **检查指标是否推送到 VictoriaMetrics**
+3. **检查指标是否推送成功**
+
+**检查 VictoriaMetrics：**
 
 ```bash
 # 查询进程指标
@@ -1388,6 +1474,22 @@ curl 'http://victoriametrics:8428/api/v1/query?query=process_memory_bytes{hostna
 
 # 使用 VictoriaMetrics UI 查询
 # 访问 http://victoriametrics:8428/vmui
+```
+
+**检查 Prometheus：**
+
+```bash
+# 查询进程指标
+curl 'http://prometheus:9090/api/v1/query?query=process_memory_bytes'
+
+# 查询系统内存指标
+curl 'http://prometheus:9090/api/v1/query?query=system_memory_total_bytes'
+
+# 查询特定主机的指标
+curl 'http://prometheus:9090/api/v1/query?query=process_memory_bytes{hostname="server01"}'
+
+# 使用 Prometheus UI 查询
+# 访问 http://prometheus:9090/graph
 ```
 
 4. **检查程序配置**
@@ -1425,7 +1527,7 @@ echo 'test_metric{hostname="test"} 1' | \
 # 解决：检查 /proc 文件系统是否可访问，检查权限
 
 # 错误：数据推送失败但程序继续运行
-# 解决：检查网络连接和 VictoriaMetrics 状态
+# 解决：检查网络连接和 VictoriaMetrics/Prometheus 服务状态
 ```
 
 ### 问题：程序无法读取 /proc 文件系统
@@ -1595,11 +1697,14 @@ strace -f -e trace=network,file ./process_exporter \
 #### 测试网络连接
 
 ```bash
-# 使用 tcpdump 抓包
+# 使用 tcpdump 抓包（VictoriaMetrics 默认端口 8428）
 sudo tcpdump -i any -n port 8428
 
+# 使用 tcpdump 抓包（Prometheus 默认端口 9090）
+sudo tcpdump -i any -n port 9090
+
 # 使用 wireshark 分析
-sudo tshark -i any -f "port 8428"
+sudo tshark -i any -f "port 8428 or port 9090"
 ```
 
 #### 验证配置
@@ -1617,5 +1722,139 @@ EOF
 
 chmod +x test_config.sh
 ./test_config.sh
+```
+
+## VictoriaMetrics 和 Prometheus 兼容性
+
+### 支持的监控系统
+
+本工具同时支持 **VictoriaMetrics** 和 **Prometheus**，使用标准的 Prometheus 远程写入 API（`/api/v1/write`）推送指标。
+
+### VictoriaMetrics 配置
+
+VictoriaMetrics **原生支持** `/api/v1/write` 端点，无需额外配置：
+
+```bash
+# VictoriaMetrics 默认端口：8428
+./process_exporter --remote.url=http://victoriametrics:8428/api/v1/write
+```
+
+**VictoriaMetrics 优势：**
+- ✅ 原生支持远程写入 API，开箱即用
+- ✅ 高性能，适合大规模数据采集
+- ✅ 支持 PromQL 查询语法
+- ✅ 兼容 Prometheus 指标格式
+
+### Prometheus 配置
+
+Prometheus 需要配置 remote_write 接收器。有两种方式：
+
+#### 方式 1：使用 Prometheus Agent 模式（推荐）
+
+Prometheus Agent 模式专门用于接收远程写入数据：
+
+```yaml
+# prometheus-agent.yml
+global:
+  external_labels:
+    cluster: 'production'
+
+# 启用远程写入接收器
+remote_write:
+  - url: "http://prometheus:9090/api/v1/write"
+    basic_auth:
+      username: "monitor"
+      password: "secret"
+```
+
+启动 Prometheus Agent：
+
+```bash
+prometheus --config.file=prometheus-agent.yml --enable-feature=agent
+```
+
+#### 方式 2：使用 Prometheus 远程写入端点
+
+如果使用标准 Prometheus，需要配置 remote_write 接收器或使用支持远程写入的 Prometheus 发行版（如 Prometheus Operator）。
+
+**Prometheus 配置示例：**
+
+```yaml
+# prometheus.yml
+global:
+  scrape_interval: 15s
+
+# 远程写入配置（如果需要转发到其他系统）
+remote_write:
+  - url: "http://victoriametrics:8428/api/v1/write"
+
+# 注意：标准 Prometheus 不直接支持接收远程写入
+# 需要使用 Prometheus Agent 模式或第三方接收器
+```
+
+### 端点 URL 格式
+
+两种系统使用相同的端点格式：
+
+| 系统 | 默认端口 | 端点 URL 示例 |
+|------|---------|-------------|
+| VictoriaMetrics | 8428 | `http://victoriametrics:8428/api/v1/write` |
+| Prometheus Agent | 9090 | `http://prometheus:9090/api/v1/write` |
+
+### 认证支持
+
+两种系统都支持 HTTP Basic Authentication：
+
+```bash
+# VictoriaMetrics 带认证
+./process_exporter \
+  --remote.url=https://vm.example.com/api/v1/write \
+  --remote.username=monitor \
+  --remote.password=secret
+
+# Prometheus 带认证
+./process_exporter \
+  --remote.url=https://prometheus.example.com/api/v1/write \
+  --remote.username=monitor \
+  --remote.password=secret
+```
+
+### 查询兼容性
+
+所有查询使用 **PromQL** 语法，在两种系统中都可以使用：
+
+```promql
+# 这些查询在 VictoriaMetrics 和 Prometheus 中都可以使用
+process_memory_bytes{hostname="server01"}
+topk(10, process_cpu_percent)
+system_memory_used_percent > 80
+```
+
+### 选择建议
+
+**选择 VictoriaMetrics 如果：**
+- 需要高性能和大规模数据采集
+- 需要原生支持远程写入
+- 需要更好的压缩和存储效率
+- 需要更快的查询性能
+
+**选择 Prometheus 如果：**
+- 已有 Prometheus 生态系统
+- 需要使用 Prometheus Agent 模式
+- 需要与现有 Prometheus 工具链集成
+- 团队熟悉 Prometheus 运维
+
+### 迁移指南
+
+从 VictoriaMetrics 迁移到 Prometheus（或反之）非常简单，只需更改 `--remote.url` 参数：
+
+```bash
+# 从 VictoriaMetrics 切换到 Prometheus
+# 只需修改 URL，其他配置保持不变
+./process_exporter \
+  --remote.url=http://prometheus:9090/api/v1/write \
+  --interval=60s \
+  --top=10 \
+  --label env=production
 ```
 
